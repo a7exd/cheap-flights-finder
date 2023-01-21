@@ -1,3 +1,4 @@
+import smtplib
 from flight_data import FlightData
 from twilio.rest import Client
 from abc import ABC, abstractmethod
@@ -8,8 +9,9 @@ class Notifier(ABC):
     """This class is responsible for sending notifications
     with the flight details."""
 
-    def __init__(self, flight: FlightData):
+    def __init__(self, flight: FlightData, passengers_num: str = "1"):
         self.flight = flight
+        self.passengers_num = passengers_num
 
     @abstractmethod
     def send_msg(self) -> bool:
@@ -38,6 +40,7 @@ class Notifier(ABC):
 
 class TwilioNotifier(Notifier):
     def send_msg(self) -> bool:
+        # TODO Try except
         account_sid = os.getenv("TWILIO_SID")
         auth_token = os.getenv("TWILIO_AUTH")
         my_phone_no = os.getenv("TWILIO_PHONE")  # your phone from twilio
@@ -47,3 +50,35 @@ class TwilioNotifier(Notifier):
             to=to_phone_no, from_=my_phone_no, body=self.msg_text
         )
         return True
+
+
+class EmailNotifier(Notifier):
+    def send_msg(self) -> bool:
+        out_email = os.getenv("FROM_EMAIL")
+        forward_dep_date = self.flight.route.forward_dep_dtime.strftime("%d%m")
+        backward_arr_date = self.flight.route.return_dep_dtime.strftime("%d%m")
+        route = self.flight.route
+        aviasales_link = (
+            f"https://www.aviasales.com/search/"
+            f"{route.forward_dep_airport}{forward_dep_date}"
+            f"{route.forward_arr_airport}{backward_arr_date}"
+            f"{self.passengers_num}"
+        )
+        # TODO Try except
+        with smtplib.SMTP("smtp.google.com", port=587, timeout=2) as conn:
+            conn.starttls()
+            conn.login(user=out_email, password=os.getenv("FROM_EMAIL_PASS"))
+            conn.sendmail(
+                from_addr=out_email,
+                to_addrs=os.getenv("TO_EMAIL"),
+                msg="Subject: Cheap Flight! Hurry Up!\n\n"
+                f"{self.msg_text}\n"
+                f"You can book your flight using the link below:\n"
+                f"{aviasales_link}",
+            )
+        return True
+
+
+class TelegramNotifier(Notifier):
+    def send_msg(self) -> bool:  # TODO
+        pass
